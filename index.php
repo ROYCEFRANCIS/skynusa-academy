@@ -74,8 +74,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <div class="login-footer">
                 <p>Demo Account:</p>
                 <small>Admin: admin / admin123</small><br>
-                <small>Instructor: instructor1 / instructor123</small><br>
-                <small>Student: student1 / student123</small>
+                <small>Instructor: instructor1 / instructor122</small><br>
+                <small>Student: student1 / student122</small>
             </div>
         </div>
     </div>

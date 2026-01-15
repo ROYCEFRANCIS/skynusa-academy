@@ -14,49 +14,59 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'student') {
 $student_id = $_SESSION['user_id'];
 $student_name = $_SESSION['full_name'];
 
-// Data dummy untuk demo (nanti bisa diganti dengan real data)
+// Get real statistics
+$enrolled = mysqli_num_rows(query("SELECT * FROM enrollments WHERE student_id='$student_id' AND status='active'"));
+$completed = mysqli_num_rows(query("SELECT * FROM enrollments WHERE student_id='$student_id' AND status='completed'"));
+$in_progress = mysqli_num_rows(query("SELECT * FROM enrollments WHERE student_id='$student_id' AND status='active' AND progress < 100"));
+$certificates = $completed;
+
 $stats = [
-    'enrolled' => 3,
-    'completed' => 1,
-    'in_progress' => 2,
-    'certificates' => 1
+    'enrolled' => $enrolled,
+    'completed' => $completed,
+    'in_progress' => $in_progress,
+    'certificates' => $certificates
 ];
 
-$my_courses = [
-    [
-        'id' => 1,
-        'name' => 'Web Development Fundamentals',
-        'instructor' => 'John Doe',
-        'progress' => 75,
-        'status' => 'active',
-        'next_class' => '2026-01-20',
-        'category' => 'Programming'
-    ],
-    [
-        'id' => 2,
-        'name' => 'UI/UX Design Mastery',
-        'instructor' => 'Jane Smith',
-        'progress' => 45,
-        'status' => 'active',
-        'next_class' => '2026-01-18',
-        'category' => 'Design'
-    ],
-    [
-        'id' => 3,
-        'name' => 'Digital Marketing Strategy',
-        'instructor' => 'Mike Johnson',
-        'progress' => 100,
-        'status' => 'completed',
-        'next_class' => '-',
-        'category' => 'Marketing'
-    ]
-];
+// Get enrolled courses with real data
+$my_courses_query = "
+    SELECT c.*, e.progress, e.status as enrollment_status, u.full_name as instructor_name,
+           (SELECT MIN(schedule_date) FROM schedules WHERE course_id = c.id AND schedule_date > CURDATE()) as next_class
+    FROM enrollments e
+    JOIN courses c ON e.course_id = c.id
+    JOIN users u ON c.instructor_id = u.id
+    WHERE e.student_id = '$student_id'
+    ORDER BY e.created_at DESC
+";
+$my_courses = fetch_all(query($my_courses_query));
 
-$upcoming_schedule = [
-    ['course' => 'Web Development', 'time' => '09:00 - 11:00', 'date' => 'Senin, 20 Jan 2026', 'room' => 'Lab A'],
-    ['course' => 'UI/UX Design', 'time' => '13:00 - 15:00', 'date' => 'Rabu, 22 Jan 2026', 'room' => 'Lab B'],
-    ['course' => 'Digital Marketing', 'time' => '10:00 - 12:00', 'date' => 'Jumat, 24 Jan 2026', 'room' => 'Room 301']
-];
+// Get upcoming schedule
+$upcoming_schedule_query = "
+    SELECT s.*, c.course_name, c.course_code
+    FROM schedules s
+    JOIN courses c ON s.course_id = c.id
+    JOIN enrollments e ON c.id = e.course_id
+    WHERE e.student_id = '$student_id' 
+    AND s.schedule_date >= CURDATE()
+    AND s.status = 'scheduled'
+    ORDER BY s.schedule_date ASC, s.start_time ASC
+    LIMIT 5
+";
+$upcoming_schedule = fetch_all(query($upcoming_schedule_query));
+
+// Format date function
+function formatDate($date) {
+    if (empty($date)) return '-';
+    $days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    $months = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    
+    $timestamp = strtotime($date);
+    $day = $days[date('w', $timestamp)];
+    $date_num = date('d', $timestamp);
+    $month = $months[(int)date('n', $timestamp)];
+    $year = date('Y', $timestamp);
+    
+    return "$day, $date_num $month $year";
+}
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -447,6 +457,17 @@ $upcoming_schedule = [
             background: #f9fafb;
         }
 
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #9ca3af;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+
         @media (max-width: 768px) {
             .sidebar {
                 width: 70px;
@@ -487,12 +508,12 @@ $upcoming_schedule = [
 
             <ul class="sidebar-menu">
                 <li><a href="dashboard.php" class="active"><span>📊</span> <span>Dashboard</span></a></li>
-                <li><a href="#"><span>📚</span> <span>My Courses</span></a></li>
-                <li><a href="#"><span>📅</span> <span>Schedule</span></a></li>
-                <li><a href="#"><span>📝</span> <span>Assignments</span></a></li>
-                <li><a href="#"><span>⭐</span> <span>Grades</span></a></li>
-                <li><a href="#"><span>📄</span> <span>Materials</span></a></li>
-                <li><a href="#"><span>💬</span> <span>Messages</span></a></li>
+                <li><a href="my_courses.php"><span>📚</span> <span>My Courses</span></a></li>
+                <li><a href="schedule.php"><span>📅</span> <span>Schedule</span></a></li>
+                <li><a href="assignments.php"><span>📝</span> <span>Assignments</span></a></li>
+                <li><a href="grades.php"><span>⭐</span> <span>Grades</span></a></li>
+                <li><a href="materials.php"><span>📄</span> <span>Materials</span></a></li>
+                <li><a href="messages.php"><span>💬</span> <span>Messages</span></a></li>
                 <li><a href="../logout.php"><span>🚪</span> <span>Logout</span></a></li>
             </ul>
         </aside>
@@ -505,7 +526,7 @@ $upcoming_schedule = [
                     <h1>👋 Welcome back, <?php echo explode(' ', $student_name)[0]; ?>!</h1>
                 </div>
                 <div class="header-actions">
-                    <a href="#" class="btn btn-secondary">🔔 Notifications</a>
+                    <a href="browse_courses.php" class="btn btn-secondary">🔍 Browse Courses</a>
                     <a href="../logout.php" class="btn btn-primary">Logout</a>
                 </div>
             </header>
@@ -538,60 +559,78 @@ $upcoming_schedule = [
             <div class="courses-section">
                 <div class="section-header">
                     <h2>📚 My Courses</h2>
-                    <a href="#" class="btn btn-primary">Browse All Courses</a>
+                    <a href="browse_courses.php" class="btn btn-primary">Browse All Courses</a>
                 </div>
-                <div class="courses-grid">
-                    <?php foreach ($my_courses as $course): ?>
-                        <div class="course-card">
-                            <div class="course-header">
-                                <div>
-                                    <h3><?php echo $course['name']; ?></h3>
-                                    <p class="instructor">👨‍🏫 <?php echo $course['instructor']; ?></p>
+                
+                <?php if (empty($my_courses)): ?>
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📚</div>
+                        <h3>Belum ada kursus yang diikuti</h3>
+                        <p>Mulai belajar dengan mendaftar ke kursus yang tersedia</p>
+                        <br>
+                        <a href="browse_courses.php" class="btn btn-primary">Browse Courses</a>
+                    </div>
+                <?php else: ?>
+                    <div class="courses-grid">
+                        <?php foreach ($my_courses as $course): ?>
+                            <div class="course-card">
+                                <div class="course-header">
+                                    <div>
+                                        <h3><?php echo htmlspecialchars($course['course_name']); ?></h3>
+                                        <p class="instructor">👨‍🏫 <?php echo htmlspecialchars($course['instructor_name']); ?></p>
+                                    </div>
+                                    <span class="course-category"><?php echo htmlspecialchars($course['category']); ?></span>
                                 </div>
-                                <span class="course-category"><?php echo $course['category']; ?></span>
+                                
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: <?php echo $course['progress']; ?>%"></div>
+                                </div>
+                                <p class="progress-text"><?php echo number_format($course['progress'], 0); ?>% Complete</p>
+                                
+                                <div class="course-footer">
+                                    <span class="badge <?php echo $course['enrollment_status'] == 'completed' ? 'badge-completed' : 'badge-success'; ?>">
+                                        <?php echo ucfirst($course['enrollment_status']); ?>
+                                    </span>
+                                    <a href="course_detail.php?id=<?php echo $course['id']; ?>" class="btn btn-primary" style="padding: 8px 16px; font-size: 13px;">
+                                        <?php echo $course['enrollment_status'] == 'completed' ? 'Review' : 'Continue'; ?> →
+                                    </a>
+                                </div>
                             </div>
-                            
-                            <div class="progress-bar">
-                                <div class="progress-fill" style="width: <?php echo $course['progress']; ?>%"></div>
-                            </div>
-                            <p class="progress-text"><?php echo $course['progress']; ?>% Complete</p>
-                            
-                            <div class="course-footer">
-                                <span class="badge <?php echo $course['status'] == 'completed' ? 'badge-completed' : 'badge-success'; ?>">
-                                    <?php echo ucfirst($course['status']); ?>
-                                </span>
-                                <a href="#" class="btn btn-primary" style="padding: 8px 16px; font-size: 13px;">
-                                    <?php echo $course['status'] == 'completed' ? 'Review' : 'Continue'; ?> →
-                                </a>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
             </div>
 
             <!-- Upcoming Schedule -->
             <div class="schedule-table">
                 <h2>📅 Upcoming Schedule</h2>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Course</th>
-                            <th>Date</th>
-                            <th>Time</th>
-                            <th>Room</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($upcoming_schedule as $schedule): ?>
+                <?php if (empty($upcoming_schedule)): ?>
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📅</div>
+                        <p>Tidak ada jadwal yang akan datang</p>
+                    </div>
+                <?php else: ?>
+                    <table>
+                        <thead>
                             <tr>
-                                <td><strong><?php echo $schedule['course']; ?></strong></td>
-                                <td><?php echo $schedule['date']; ?></td>
-                                <td><?php echo $schedule['time']; ?></td>
-                                <td><?php echo $schedule['room']; ?></td>
+                                <th>Course</th>
+                                <th>Date</th>
+                                <th>Time</th>
+                                <th>Room</th>
                             </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($upcoming_schedule as $schedule): ?>
+                                <tr>
+                                    <td><strong><?php echo htmlspecialchars($schedule['course_name']); ?></strong></td>
+                                    <td><?php echo formatDate($schedule['schedule_date']); ?></td>
+                                    <td><?php echo date('H:i', strtotime($schedule['start_time'])) . ' - ' . date('H:i', strtotime($schedule['end_time'])); ?></td>
+                                    <td><?php echo htmlspecialchars($schedule['room']); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php endif; ?>
             </div>
         </main>
     </div>
