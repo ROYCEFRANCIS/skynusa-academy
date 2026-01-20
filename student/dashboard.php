@@ -514,6 +514,7 @@ function formatDate($date) {
                 <li><a href="grades.php"><span>⭐</span> <span>Grades</span></a></li>
                 <li><a href="materials.php"><span>📄</span> <span>Materials</span></a></li>
                 <li><a href="messages.php"><span>💬</span> <span>Messages</span></a></li>
+                <li><a href="profile.php"><span>👤</span> <span>Profile</span></a></li>
                 <li><a href="../logout.php"><span>🚪</span> <span>Logout</span></a></li>
             </ul>
         </aside>

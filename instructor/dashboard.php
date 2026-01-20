@@ -450,6 +450,7 @@ function formatDate($date) {
                 <li><a href="materials.php"><span>📄</span> <span>Materi</span></a></li>
                 <li><a href="students.php"><span>👥</span> <span>Peserta</span></a></li>
                 <li><a href="evaluations.php"><span>⭐</span> <span>Evaluasi</span></a></li>
+                <li><a href="profile.php"><span>👤</span> <span>Profile</span></a></li>
                 <li><a href="../logout.php"><span>🚪</span> <span>Logout</span></a></li>
             </ul>
         </aside>

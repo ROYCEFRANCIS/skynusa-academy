@@ -1,0 +1,349 @@
+<?php
+session_start();
+require_once '../config/database.php';
+
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'instructor') {
+    header("Location: ../index.php");
+    exit();
+}
+
+$instructor_id = $_SESSION['user_id'];
+$instructor_name = $_SESSION['full_name'];
+
+$success = '';
+$error = '';
+
+// Handle profile update
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && !isset($_POST['change_password'])) {
+    $full_name = $_POST['full_name'];
+    $email = $_POST['email'];
+    $phone = $_POST['phone'];
+    $address = $_POST['address'];
+    
+    $stmt = $conn->prepare("UPDATE users SET full_name=?, email=?, phone=?, address=? WHERE id=?");
+    $stmt->bind_param("ssssi", $full_name, $email, $phone, $address, $instructor_id);
+    
+    if ($stmt->execute()) {
+        $_SESSION['full_name'] = $full_name;
+        $success = 'Profile updated successfully!';
+    } else {
+        $error = 'Failed to update profile!';
+    }
+}
+
+// Handle password change
+if (isset($_POST['change_password'])) {
+    $current_password = md5($_POST['current_password']);
+    $new_password = md5($_POST['new_password']);
+    $confirm_password = md5($_POST['confirm_password']);
+    
+    // Verify current password
+    $check = $conn->query("SELECT password FROM users WHERE id='$instructor_id'");
+    $user = $check->fetch_assoc();
+    
+    if ($user['password'] != $current_password) {
+        $error = 'Current password is incorrect!';
+    } elseif ($new_password != $confirm_password) {
+        $error = 'New passwords do not match!';
+    } else {
+        $stmt = $conn->prepare("UPDATE users SET password=? WHERE id=?");
+        $stmt->bind_param("si", $new_password, $instructor_id);
+        if ($stmt->execute()) {
+            $success = 'Password changed successfully!';
+        } else {
+            $error = 'Failed to change password!';
+        }
+    }
+}
+
+// Get user data
+$user_query = $conn->query("SELECT * FROM users WHERE id='$instructor_id'");
+$user = $user_query->fetch_assoc();
+
+// Get statistics
+$total_courses = mysqli_num_rows($conn->query("SELECT * FROM courses WHERE instructor_id='$instructor_id'"));
+$total_students = mysqli_num_rows($conn->query("
+    SELECT DISTINCT e.student_id 
+    FROM enrollments e 
+    JOIN courses c ON e.course_id = c.id 
+    WHERE c.instructor_id='$instructor_id' AND e.status='active'
+"));
+$total_materials = mysqli_num_rows($conn->query("
+    SELECT m.* FROM materials m 
+    JOIN courses c ON m.course_id = c.id 
+    WHERE c.instructor_id='$instructor_id'
+"));
+$total_schedules = mysqli_num_rows($conn->query("
+    SELECT s.* FROM schedules s 
+    JOIN courses c ON s.course_id = c.id 
+    WHERE c.instructor_id='$instructor_id'
+"));
+?>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Profile - Skynusa Academy</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', 'Segoe UI', sans-serif; background: #f5f7fa; color: #2d3748; }
+        
+        .dashboard { display: flex; min-height: 100vh; }
+        
+        .sidebar {
+            width: 280px; background: linear-gradient(180deg, #2c5282 0%, #2b6cb0 100%);
+            color: white; padding: 0; position: fixed; height: 100vh; overflow-y: auto;
+        }
+        .sidebar-header { padding: 30px 25px; background: rgba(255,255,255,0.08); border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .sidebar-header h2 { font-size: 24px; font-weight: 700; }
+        .sidebar-header p { font-size: 13px; color: rgba(255,255,255,0.7); margin-top: 5px; }
+        
+        .instructor-profile { padding: 25px; background: rgba(255,255,255,0.05); margin: 20px; border-radius: 12px; }
+        .instructor-profile .avatar {
+            width: 60px; height: 60px; background: linear-gradient(135deg, #4299e1, #667eea);
+            border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            font-size: 26px; font-weight: 700; margin-bottom: 12px; border: 3px solid rgba(255,255,255,0.2);
+        }
+        
+        .sidebar-menu { list-style: none; padding: 20px 0; }
+        .sidebar-menu li { margin: 3px 15px; }
+        .sidebar-menu a {
+            display: flex; align-items: center; padding: 14px 15px; color: rgba(255,255,255,0.8);
+            text-decoration: none; transition: all 0.3s; border-radius: 10px; font-size: 14px;
+        }
+        .sidebar-menu a:hover { background: rgba(255,255,255,0.1); color: white; transform: translateX(5px); }
+        .sidebar-menu a.active { background: rgba(255,255,255,0.15); color: white; }
+        .sidebar-menu a span:first-child { margin-right: 12px; font-size: 18px; }
+        
+        .main-content { flex: 1; margin-left: 280px; padding: 30px 40px; }
+        
+        .header {
+            background: white; padding: 25px 30px; border-radius: 15px; margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center;
+        }
+        .header h1 { font-size: 28px; font-weight: 700; }
+        
+        .btn {
+            padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;
+            text-decoration: none; display: inline-block; transition: all 0.3s; font-size: 14px;
+        }
+        .btn-primary { background: linear-gradient(135deg, #4299e1, #667eea); color: white; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(66, 153, 225, 0.4); }
+        .btn-secondary { background: #e2e8f0; color: #4a5568; }
+        
+        .alert {
+            padding: 15px 20px; border-radius: 10px; margin-bottom: 20px; font-weight: 500;
+        }
+        .alert-success { background: #d1fae5; color: #065f46; }
+        .alert-error { background: #fee2e2; color: #991b1b; }
+        
+        .content-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 25px; }
+        
+        .panel {
+            background: white; border-radius: 15px; padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 25px;
+        }
+        .panel h2 { font-size: 20px; margin-bottom: 20px; color: #2d3748; }
+        
+        .profile-card {
+            text-align: center; padding: 30px;
+        }
+        .profile-avatar {
+            width: 120px; height: 120px; margin: 0 auto 20px;
+            background: linear-gradient(135deg, #4299e1, #667eea);
+            border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            font-size: 48px; font-weight: 700; color: white;
+            border: 5px solid #f0f2f5;
+        }
+        .profile-name { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+        .profile-role {
+            background: linear-gradient(135deg, #4299e1, #667eea);
+            color: white; padding: 6px 16px; border-radius: 20px;
+            font-size: 13px; display: inline-block; margin-bottom: 20px;
+        }
+        
+        .stats-grid {
+            display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;
+            margin-top: 20px;
+        }
+        .stat-item {
+            padding: 15px; background: #f7fafc; border-radius: 10px; text-align: center;
+        }
+        .stat-item .value { font-size: 28px; font-weight: 700; color: #4299e1; }
+        .stat-item .label { font-size: 13px; color: #718096; margin-top: 5px; }
+        
+        .form-group { margin-bottom: 20px; }
+        .form-group label {
+            display: block; margin-bottom: 8px; font-weight: 600; font-size: 14px; color: #4a5568;
+        }
+        .form-group input, .form-group textarea {
+            width: 100%; padding: 12px; border: 2px solid #e2e8f0;
+            border-radius: 8px; font-size: 14px; transition: all 0.3s;
+        }
+        .form-group input:focus, .form-group textarea:focus {
+            outline: none; border-color: #4299e1;
+        }
+        .form-group textarea { min-height: 100px; resize: vertical; }
+        
+        .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+        
+        @media (max-width: 1024px) {
+            .content-grid { grid-template-columns: 1fr; }
+        }
+        
+        @media (max-width: 768px) {
+            .sidebar { width: 70px; }
+            .main-content { margin-left: 70px; padding: 20px; }
+            .form-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>🎓 Skynusa Academy</h2>
+                <p>Instruktur Panel</p>
+            </div>
+            <div class="instructor-profile">
+                <div class="avatar"><?php echo strtoupper(substr($instructor_name, 0, 1)); ?></div>
+                <h3><?php echo $instructor_name; ?></h3>
+                <p>Instructor</p>
+            </div>
+            <ul class="sidebar-menu">
+                <li><a href="dashboard.php"><span>📊</span> <span>Dashboard</span></a></li>
+                <li><a href="my_courses.php"><span>📚</span> <span>Kursus Saya</span></a></li>
+                <li><a href="schedules.php"><span>📅</span> <span>Jadwal</span></a></li>
+                <li><a href="materials.php"><span>📄</span> <span>Materi</span></a></li>
+                <li><a href="students.php"><span>👥</span> <span>Peserta</span></a></li>
+                <li><a href="evaluations.php"><span>⭐</span> <span>Evaluasi</span></a></li>
+                <li><a href="profile.php" class="active"><span>👤</span> <span>Profile</span></a></li>
+                <li><a href="../logout.php"><span>🚪</span> <span>Logout</span></a></li>
+            </ul>
+        </aside>
+        
+        <main class="main-content">
+            <header class="header">
+                <h1>👤 My Profile</h1>
+                <a href="dashboard.php" class="btn btn-secondary">← Back</a>
+            </header>
+            
+            <?php if ($success): ?>
+                <div class="alert alert-success">✅ <?php echo $success; ?></div>
+            <?php endif; ?>
+            
+            <?php if ($error): ?>
+                <div class="alert alert-error">❌ <?php echo $error; ?></div>
+            <?php endif; ?>
+            
+            <div class="content-grid">
+                <div>
+                    <div class="panel profile-card">
+                        <div class="profile-avatar">
+                            <?php echo strtoupper(substr($user['full_name'], 0, 1)); ?>
+                        </div>
+                        <div class="profile-name"><?php echo htmlspecialchars($user['full_name']); ?></div>
+                        <span class="profile-role">Instructor</span>
+                        
+                        <div style="text-align: left; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
+                            <p style="font-size: 13px; color: #718096; margin-bottom: 8px;">
+                                <strong>Username:</strong> <?php echo htmlspecialchars($user['username']); ?>
+                            </p>
+                            <p style="font-size: 13px; color: #718096; margin-bottom: 8px;">
+                                <strong>Email:</strong> <?php echo htmlspecialchars($user['email']); ?>
+                            </p>
+                            <p style="font-size: 13px; color: #718096; margin-bottom: 8px;">
+                                <strong>Phone:</strong> <?php echo htmlspecialchars($user['phone']); ?>
+                            </p>
+                            <p style="font-size: 13px; color: #718096;">
+                                <strong>Member Since:</strong> <?php echo date('d M Y', strtotime($user['created_at'])); ?>
+                            </p>
+                        </div>
+                        
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <div class="value"><?php echo $total_courses; ?></div>
+                                <div class="label">Courses</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="value"><?php echo $total_students; ?></div>
+                                <div class="label">Students</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="value"><?php echo $total_materials; ?></div>
+                                <div class="label">Materials</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="value"><?php echo $total_schedules; ?></div>
+                                <div class="label">Schedules</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div>
+                    <div class="panel">
+                        <h2>✏️ Edit Profile</h2>
+                        <form method="POST">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Full Name *</label>
+                                    <input type="text" name="full_name" value="<?php echo htmlspecialchars($user['full_name']); ?>" required>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label>Email</label>
+                                    <input type="email" name="email" value="<?php echo htmlspecialchars($user['email']); ?>">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label>Phone</label>
+                                    <input type="text" name="phone" value="<?php echo htmlspecialchars($user['phone']); ?>">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label>Username (Read Only)</label>
+                                    <input type="text" value="<?php echo htmlspecialchars($user['username']); ?>" readonly style="background: #f7fafc;">
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Address</label>
+                                <textarea name="address"><?php echo htmlspecialchars($user['address']); ?></textarea>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary">💾 Update Profile</button>
+                        </form>
+                    </div>
+                    
+                    <div class="panel">
+                        <h2>🔒 Change Password</h2>
+                        <form method="POST">
+                            <div class="form-group">
+                                <label>Current Password *</label>
+                                <input type="password" name="current_password" required>
+                            </div>
+                            
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>New Password *</label>
+                                    <input type="password" name="new_password" required>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label>Confirm New Password *</label>
+                                    <input type="password" name="confirm_password" required>
+                                </div>
+                            </div>
+                            
+                            <button type="submit" name="change_password" class="btn btn-primary">🔒 Change Password</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>
