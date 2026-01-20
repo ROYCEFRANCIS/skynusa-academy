@@ -39,6 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_grade'])) {
     $progress = (int)$_POST['progress'];
     $status = $_POST['status'];
     
+    
     $stmt = $conn->prepare("UPDATE enrollments SET final_grade=?, progress=?, status=? WHERE id=?");
     $stmt->bind_param("disi", $final_grade, $progress, $status, $enrollment_id);
     

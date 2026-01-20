@@ -260,6 +260,7 @@ function formatDate($date) {
             transition: transform 0.3s;
             position: relative;
             overflow: hidden;
+            cursor: pointer;
         }
 
         .stat-card:hover {
@@ -513,6 +514,7 @@ function formatDate($date) {
                 <li><a href="assignments.php"><span>📝</span> <span>Assignments</span></a></li>
                 <li><a href="grades.php"><span>⭐</span> <span>Grades</span></a></li>
                 <li><a href="materials.php"><span>📄</span> <span>Materials</span></a></li>
+                <li><a href="certificates.php"><span>🏆</span> <span>Certificates</span></a></li>
                 <li><a href="messages.php"><span>💬</span> <span>Messages</span></a></li>
                 <li><a href="profile.php"><span>👤</span> <span>Profile</span></a></li>
                 <li><a href="../logout.php"><span>🚪</span> <span>Logout</span></a></li>
@@ -534,22 +536,22 @@ function formatDate($date) {
 
             <!-- Stats Cards -->
             <div class="stats-grid">
-                <div class="stat-card">
+                <div class="stat-card" onclick="window.location.href='my_courses.php'">
                     <div class="stat-icon blue">📚</div>
                     <h3>Enrolled Courses</h3>
                     <div class="number"><?php echo $stats['enrolled']; ?></div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card" onclick="window.location.href='my_courses.php'">
                     <div class="stat-icon green">✅</div>
                     <h3>Completed</h3>
                     <div class="number"><?php echo $stats['completed']; ?></div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card" onclick="window.location.href='my_courses.php'">
                     <div class="stat-icon purple">📖</div>
                     <h3>In Progress</h3>
                     <div class="number"><?php echo $stats['in_progress']; ?></div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card" onclick="window.location.href='certificates.php'">
                     <div class="stat-icon orange">🏆</div>
                     <h3>Certificates</h3>
                     <div class="number"><?php echo $stats['certificates']; ?></div>
