@@ -44,12 +44,14 @@ $schedules = fetch_all(query("
     LIMIT 5
 "));
 
-// Get assignments
+// Get assignments - FIXED: Changed 'grade' to 'score'
 $assignments = fetch_all(query("
     SELECT a.*, 
-           (SELECT grade FROM assignment_submissions WHERE assignment_id = a.id AND student_id = '$student_id') as my_grade,
-           (SELECT submitted_at FROM assignment_submissions WHERE assignment_id = a.id AND student_id = '$student_id') as submitted_at
+           s.score as my_score,
+           s.submitted_at,
+           s.status as submission_status
     FROM assignments a
+    LEFT JOIN assignment_submissions s ON a.id = s.assignment_id AND s.student_id = '$student_id'
     WHERE a.course_id = '$course_id'
     ORDER BY a.due_date ASC
 "));
@@ -308,14 +310,18 @@ $classmates = mysqli_num_rows(query("
                                         <div class="item-content">
                                             <h4><?php echo htmlspecialchars($assignment['title']); ?></h4>
                                             <p>Due: <?php echo date('d M Y', strtotime($assignment['due_date'])); ?>
-                                            <?php if ($assignment['my_grade']): ?>
-                                                · Grade: <?php echo number_format($assignment['my_grade'], 1); ?>
+                                            <?php if ($assignment['my_score']): ?>
+                                                · Score: <?php echo number_format($assignment['my_score'], 1); ?>/<?php echo $assignment['max_score']; ?>
                                             <?php endif; ?>
                                             </p>
                                         </div>
                                     </div>
                                     <?php if ($assignment['submitted_at']): ?>
-                                        <span class="badge badge-success">Submitted</span>
+                                        <?php if ($assignment['submission_status'] == 'graded'): ?>
+                                            <span class="badge badge-success">Graded</span>
+                                        <?php else: ?>
+                                            <span class="badge badge-info">Submitted</span>
+                                        <?php endif; ?>
                                     <?php elseif (strtotime($assignment['due_date']) < time()): ?>
                                         <span class="badge badge-danger">Overdue</span>
                                     <?php else: ?>
