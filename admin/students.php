@@ -342,4 +342,4 @@ if (isset($_GET['edit'])) {
         </div>
     </div>
 </body>
-</html>
+</html><link rel="stylesheet" href="../assets/css/enhanced-style.css">
