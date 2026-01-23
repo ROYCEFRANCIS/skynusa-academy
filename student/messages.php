@@ -16,46 +16,93 @@ $error = '';
 // Handle send message
 if (isset($_POST['send_message'])) {
     $receiver_id = (int)$_POST['receiver_id'];
-    $subject = $_POST['subject'];
-    $message = $_POST['message'];
+    $subject = trim($_POST['subject']);
+    $message = trim($_POST['message']);
+    $parent_id = isset($_POST['parent_id']) ? (int)$_POST['parent_id'] : NULL;
     
-    $stmt = $conn->prepare("INSERT INTO messages (sender_id, receiver_id, subject, message) VALUES (?, ?, ?, ?)");
-    $stmt->bind_param("iiss", $student_id, $receiver_id, $subject, $message);
+    if (empty($subject)) {
+        $subject = 'No Subject';
+    }
+    
+    $stmt = $conn->prepare("INSERT INTO messages (sender_id, receiver_id, subject, message, parent_id) VALUES (?, ?, ?, ?, ?)");
+    $stmt->bind_param("iissi", $student_id, $receiver_id, $subject, $message, $parent_id);
     
     if ($stmt->execute()) {
         $success = 'Message sent successfully!';
+        header("Location: messages.php?tab=inbox");
+        exit();
     } else {
         $error = 'Failed to send message!';
     }
 }
 
-// Mark as read
+// Handle mark as read
 if (isset($_GET['read'])) {
     $msg_id = (int)$_GET['read'];
-    $conn->query("UPDATE messages SET is_read = 1 WHERE id = $msg_id AND receiver_id = '$student_id'");
+    $conn->query("UPDATE messages SET is_read = 1, read_at = NOW() WHERE id = $msg_id AND receiver_id = '$student_id'");
 }
+
+// Handle mark as unread
+if (isset($_GET['unread'])) {
+    $msg_id = (int)$_GET['unread'];
+    $conn->query("UPDATE messages SET is_read = 0, read_at = NULL WHERE id = $msg_id AND receiver_id = '$student_id'");
+}
+
+// Handle star/unstar
+if (isset($_GET['star'])) {
+    $msg_id = (int)$_GET['star'];
+    $conn->query("UPDATE messages SET is_starred = NOT is_starred WHERE id = $msg_id AND (receiver_id = '$student_id' OR sender_id = '$student_id')");
+}
+
+// Handle delete
+if (isset($_GET['delete'])) {
+    $msg_id = (int)$_GET['delete'];
+    $conn->query("UPDATE messages SET is_archived = 1 WHERE id = $msg_id AND (receiver_id = '$student_id' OR sender_id = '$student_id')");
+    header("Location: messages.php?tab=" . ($_GET['tab'] ?? 'inbox'));
+    exit();
+}
+
+// Get active tab
+$active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'inbox';
+$view_msg_id = isset($_GET['view']) ? (int)$_GET['view'] : 0;
+$reply_to_id = isset($_GET['reply']) ? (int)$_GET['reply'] : 0;
 
 // Get inbox messages
 $inbox = $conn->query("
-    SELECT m.*, u.full_name as sender_name, u.role as sender_role
+    SELECT m.*, u.full_name as sender_name, u.role as sender_role,
+           (SELECT COUNT(*) FROM messages WHERE parent_id = m.id) as reply_count
     FROM messages m
     JOIN users u ON m.sender_id = u.id
-    WHERE m.receiver_id = '$student_id'
-    ORDER BY m.created_at DESC
+    WHERE m.receiver_id = '$student_id' AND m.is_archived = 0
+    ORDER BY m.is_starred DESC, m.created_at DESC
 ");
 
 // Get sent messages
 $sent = $conn->query("
-    SELECT m.*, u.full_name as receiver_name, u.role as receiver_role
+    SELECT m.*, u.full_name as receiver_name, u.role as receiver_role,
+           (SELECT COUNT(*) FROM messages WHERE parent_id = m.id) as reply_count
     FROM messages m
     JOIN users u ON m.receiver_id = u.id
-    WHERE m.sender_id = '$student_id'
+    WHERE m.sender_id = '$student_id' AND m.is_archived = 0
+    ORDER BY m.created_at DESC
+");
+
+// Get starred messages
+$starred = $conn->query("
+    SELECT m.*, 
+           IF(m.sender_id = '$student_id', u2.full_name, u1.full_name) as other_name,
+           IF(m.sender_id = '$student_id', 'sent', 'received') as direction
+    FROM messages m
+    LEFT JOIN users u1 ON m.sender_id = u1.id
+    LEFT JOIN users u2 ON m.receiver_id = u2.id
+    WHERE (m.receiver_id = '$student_id' OR m.sender_id = '$student_id') 
+    AND m.is_starred = 1 AND m.is_archived = 0
     ORDER BY m.created_at DESC
 ");
 
 // Get instructors for compose
 $instructors = $conn->query("
-    SELECT DISTINCT u.id, u.full_name, c.course_name
+    SELECT DISTINCT u.id, u.full_name, c.course_name, c.course_code
     FROM users u
     JOIN courses c ON u.id = c.instructor_id
     JOIN enrollments e ON c.id = e.course_id
@@ -63,10 +110,63 @@ $instructors = $conn->query("
     ORDER BY u.full_name
 ");
 
-// Count unread
-$unread_count = $conn->query("SELECT COUNT(*) as count FROM messages WHERE receiver_id = '$student_id' AND is_read = 0")->fetch_assoc()['count'];
+// Get admins for compose
+$admins = $conn->query("
+    SELECT id, full_name FROM users WHERE role = 'admin' ORDER BY full_name
+");
 
-$active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'inbox';
+// Count unread
+$unread_count = $conn->query("SELECT COUNT(*) as count FROM messages WHERE receiver_id = '$student_id' AND is_read = 0 AND is_archived = 0")->fetch_assoc()['count'];
+
+// Get viewed message with thread
+$viewed_message = null;
+$message_thread = [];
+if ($view_msg_id > 0) {
+    $stmt = $conn->prepare("
+        SELECT m.*, u.full_name as sender_name, u.role as sender_role
+        FROM messages m
+        JOIN users u ON m.sender_id = u.id
+        WHERE m.id = ? AND (m.receiver_id = ? OR m.sender_id = ?)
+    ");
+    $stmt->bind_param("iii", $view_msg_id, $student_id, $student_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $viewed_message = $result->fetch_assoc();
+    
+    if ($viewed_message) {
+        // Mark as read
+        if ($viewed_message['receiver_id'] == $student_id && !$viewed_message['is_read']) {
+            $conn->query("UPDATE messages SET is_read = 1, read_at = NOW() WHERE id = $view_msg_id");
+        }
+        
+        // Get thread (replies)
+        $thread_query = $conn->query("
+            SELECT m.*, u.full_name as sender_name, u.role as sender_role
+            FROM messages m
+            JOIN users u ON m.sender_id = u.id
+            WHERE m.parent_id = $view_msg_id
+            ORDER BY m.created_at ASC
+        ");
+        while ($row = $thread_query->fetch_assoc()) {
+            $message_thread[] = $row;
+        }
+    }
+}
+
+// Get reply-to message
+$reply_to_message = null;
+if ($reply_to_id > 0) {
+    $stmt = $conn->prepare("
+        SELECT m.*, u.full_name as sender_name, u.id as sender_user_id
+        FROM messages m
+        JOIN users u ON m.sender_id = u.id
+        WHERE m.id = ? AND (m.receiver_id = ? OR m.sender_id = ?)
+    ");
+    $stmt->bind_param("iii", $reply_to_id, $student_id, $student_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $reply_to_message = $result->fetch_assoc();
+}
 ?>
 <!DOCTYPE html>
 <html lang="id">

@@ -54,6 +54,10 @@ $instructor_name = $_SESSION['full_name'] ?? 'Instructor';
                 <i class="fas fa-star"></i>
                 <span>Evaluations</span>
             </a>
+                        <a href="messages.php" class="nav-item <?php echo $current_page == 'messages' ? 'active' : ''; ?>">
+                <i class="fas fa-comment-alt"></i>
+                <span>messages</span>
+            </a>
         </div>
         
         <div class="nav-section">
