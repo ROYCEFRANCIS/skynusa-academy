@@ -257,3 +257,4 @@ $student_name = $_SESSION['full_name'] ?? 'Student';
     }
 }
 </style>
+<link rel="stylesheet" href="../assets/css/modern-theme.css">

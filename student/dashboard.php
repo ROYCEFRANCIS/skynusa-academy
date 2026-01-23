@@ -491,6 +491,7 @@ function formatDate($date) {
             }
         }
     </style>
+    
 </head>
 <body>
     <div class="dashboard">

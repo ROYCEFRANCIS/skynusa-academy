@@ -222,3 +222,4 @@ $admin_name = $_SESSION['full_name'] ?? 'Admin';
     }
 }
 </style>
+<link rel="stylesheet" href="../assets/css/modern-theme.css">

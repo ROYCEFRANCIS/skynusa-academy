@@ -218,3 +218,4 @@ $instructor_name = $_SESSION['full_name'] ?? 'Instructor';
     }
 }
 </style>
+<link rel="stylesheet" href="../assets/css/modern-theme.css">
