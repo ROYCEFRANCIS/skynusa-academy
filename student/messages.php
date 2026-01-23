@@ -10,7 +10,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'student') {
 $student_id = $_SESSION['user_id'];
 $student_name = $_SESSION['full_name'];
 
-// Handle send message
+// Handle send message (including replies)
 if (isset($_POST['send_message'])) {
     $receiver_id = (int)$_POST['receiver_id'];
     $subject = trim($_POST['subject']);
@@ -18,7 +18,7 @@ if (isset($_POST['send_message'])) {
     $parent_id = isset($_POST['parent_id']) ? (int)$_POST['parent_id'] : NULL;
     
     if (empty($subject)) {
-        $subject = 'No Subject';
+        $subject = 'Re: ' . ($_POST['original_subject'] ?? 'No Subject');
     }
     
     $stmt = $conn->prepare("INSERT INTO messages (sender_id, receiver_id, subject, message, parent_id) VALUES (?, ?, ?, ?, ?)");
@@ -26,9 +26,26 @@ if (isset($_POST['send_message'])) {
     
     if ($stmt->execute()) {
         $_SESSION['success'] = 'Message sent successfully!';
-        header("Location: messages.php?tab=sent");
+        if ($parent_id) {
+            header("Location: messages.php?tab=" . ($_GET['tab'] ?? 'inbox') . "&view=" . $parent_id);
+        } else {
+            header("Location: messages.php?tab=sent");
+        }
         exit();
     }
+}
+
+// Handle delete message
+if (isset($_POST['delete_message'])) {
+    $msg_id = (int)$_POST['msg_id'];
+    
+    // Delete the message and all its replies (only if sender or receiver)
+    $conn->query("DELETE FROM messages WHERE id = $msg_id AND (sender_id = '$student_id' OR receiver_id = '$student_id')");
+    $conn->query("DELETE FROM messages WHERE parent_id = $msg_id AND (sender_id = '$student_id' OR receiver_id = '$student_id')");
+    
+    $_SESSION['success'] = 'Message deleted successfully!';
+    header("Location: messages.php?tab=" . ($_GET['tab'] ?? 'inbox'));
+    exit();
 }
 
 // Handle actions
@@ -43,10 +60,10 @@ if (isset($_GET['action'])) {
             $conn->query("UPDATE messages SET is_read = 0, read_at = NULL WHERE id = $msg_id AND receiver_id = '$student_id'");
             break;
         case 'star':
-            $conn->query("UPDATE messages SET is_starred = NOT is_starred WHERE id = $msg_id AND (receiver_id = '$student_id' OR sender_id = '$student_id')");
+            $conn->query("UPDATE messages SET is_starred = NOT is_starred WHERE id = $msg_id AND (sender_id = '$student_id' OR receiver_id = '$student_id')");
             break;
         case 'archive':
-            $conn->query("UPDATE messages SET is_archived = 1 WHERE id = $msg_id AND (receiver_id = '$student_id' OR sender_id = '$student_id')");
+            $conn->query("UPDATE messages SET is_archived = 1 WHERE id = $msg_id AND (sender_id = '$student_id' OR receiver_id = '$student_id')");
             header("Location: messages.php?tab=" . ($_GET['tab'] ?? 'inbox'));
             exit();
     }
@@ -55,27 +72,28 @@ if (isset($_GET['action'])) {
 $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'inbox';
 $view_msg_id = isset($_GET['view']) ? (int)$_GET['view'] : 0;
 
-// Get inbox messages
+// Count unread
+$unread_count = $conn->query("SELECT COUNT(*) as count FROM messages WHERE receiver_id = '$student_id' AND is_read = 0")->fetch_assoc()['count'];
+
+// Get inbox
 $inbox = $conn->query("
-    SELECT m.*, u.full_name as sender_name, u.role as sender_role,
-           (SELECT COUNT(*) FROM messages WHERE parent_id = m.id) as reply_count
+    SELECT m.*, u.full_name as sender_name, u.role as sender_role
     FROM messages m
     JOIN users u ON m.sender_id = u.id
-    WHERE m.receiver_id = '$student_id' AND m.is_archived = 0 AND m.parent_id IS NULL
+    WHERE m.receiver_id = '$student_id' AND m.parent_id IS NULL AND m.is_archived = 0
     ORDER BY m.is_starred DESC, m.created_at DESC
 ");
 
-// Get sent messages
+// Get sent
 $sent = $conn->query("
-    SELECT m.*, u.full_name as receiver_name, u.role as receiver_role,
-           (SELECT COUNT(*) FROM messages WHERE parent_id = m.id) as reply_count
+    SELECT m.*, u.full_name as receiver_name, u.role as receiver_role
     FROM messages m
     JOIN users u ON m.receiver_id = u.id
-    WHERE m.sender_id = '$student_id' AND m.is_archived = 0 AND m.parent_id IS NULL
+    WHERE m.sender_id = '$student_id' AND m.parent_id IS NULL
     ORDER BY m.created_at DESC
 ");
 
-// Get starred messages
+// Get starred
 $starred = $conn->query("
     SELECT m.*, 
            IF(m.sender_id = '$student_id', u2.full_name, u1.full_name) as other_name,
@@ -89,23 +107,13 @@ $starred = $conn->query("
     ORDER BY m.created_at DESC
 ");
 
-// Get instructors for compose
-$instructors = $conn->query("
-    SELECT DISTINCT u.id, u.full_name, c.course_name, c.course_code
-    FROM users u
-    JOIN courses c ON u.id = c.instructor_id
-    JOIN enrollments e ON c.id = e.course_id
-    WHERE e.student_id = '$student_id' AND u.role = 'instructor'
-    ORDER BY u.full_name
+// Get admins and instructors for compose
+$recipients = $conn->query("
+    SELECT id, full_name, role, email 
+    FROM users 
+    WHERE role IN ('admin', 'instructor')
+    ORDER BY role DESC, full_name
 ");
-
-// Get admins for compose
-$admins = $conn->query("
-    SELECT id, full_name FROM users WHERE role = 'admin' ORDER BY full_name
-");
-
-// Count unread
-$unread_count = $conn->query("SELECT COUNT(*) as count FROM messages WHERE receiver_id = '$student_id' AND is_read = 0 AND is_archived = 0")->fetch_assoc()['count'];
 
 // Get viewed message with thread
 $viewed_message = null;
@@ -113,7 +121,7 @@ $message_thread = [];
 if ($view_msg_id > 0) {
     $stmt = $conn->prepare("
         SELECT m.*, u.full_name as sender_name, u.role as sender_role,
-               u2.full_name as receiver_name
+               u2.full_name as receiver_name, u2.id as receiver_id
         FROM messages m
         JOIN users u ON m.sender_id = u.id
         JOIN users u2 ON m.receiver_id = u2.id
@@ -125,12 +133,10 @@ if ($view_msg_id > 0) {
     $viewed_message = $result->fetch_assoc();
     
     if ($viewed_message) {
-        // Mark as read
         if ($viewed_message['receiver_id'] == $student_id && !$viewed_message['is_read']) {
             $conn->query("UPDATE messages SET is_read = 1, read_at = NOW() WHERE id = $view_msg_id");
         }
         
-        // Get thread (replies)
         $thread_query = $conn->query("
             SELECT m.*, u.full_name as sender_name, u.role as sender_role
             FROM messages m
@@ -150,7 +156,7 @@ unset($_SESSION['success']);
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Messages - Skynusa Academy</title>
+    <title>Student Messages</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -162,20 +168,20 @@ unset($_SESSION['success']);
         
         .sidebar {
             width: 300px;
-            background: linear-gradient(180deg, #1e3a8a 0%, #312e81 100%);
+            background: linear-gradient(180deg, #3b82f6 0%, #1e40af 100%);
             color: white;
             display: flex;
             flex-direction: column;
         }
         .sidebar-header { padding: 25px 20px; border-bottom: 1px solid rgba(255,255,255,0.1); }
         .sidebar-header h2 { font-size: 22px; font-weight: 700; }
-        .user-info { font-size: 13px; color: rgba(255,255,255,0.7); margin-top: 10px; }
+        .user-info { font-size: 13px; color: rgba(255,255,255,0.7); margin-top: 8px; }
         
         .compose-btn {
-            margin: 20px;
+            margin: 20px 20px;
             padding: 14px;
             background: white;
-            color: #1e3a8a;
+            color: #3b82f6;
             border: none;
             border-radius: 10px;
             font-weight: 700;
@@ -183,7 +189,7 @@ unset($_SESSION['success']);
             font-size: 15px;
             transition: all 0.3s;
         }
-        .compose-btn:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+        .compose-btn:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
         
         .nav-menu { list-style: none; padding: 0 10px; }
         .nav-link {
@@ -201,11 +207,12 @@ unset($_SESSION['success']);
         .nav-link i { width: 24px; margin-right: 12px; }
         .nav-badge {
             margin-left: auto;
-            background: #ef4444;
-            color: white;
+            background: #fbbf24;
+            color: #78350f;
             padding: 3px 8px;
             border-radius: 12px;
             font-size: 11px;
+            font-weight: 700;
         }
         
         .message-list-container {
@@ -226,13 +233,13 @@ unset($_SESSION['success']);
         }
         .message-item:hover { background: #f9fafb; }
         .message-item.unread { background: #eff6ff; font-weight: 600; }
+        .message-item.active { background: #dbeafe; border-left: 4px solid #3b82f6; }
         .message-sender { font-size: 14px; font-weight: 600; }
         .message-time { font-size: 12px; color: #6b7280; }
         .message-subject { font-size: 13px; color: #374151; margin: 6px 0; }
-        .message-preview { font-size: 13px; color: #9ca3af; }
         
         .message-view-container { flex: 1; display: flex; flex-direction: column; }
-        .compose-container { padding: 30px; max-width: 900px; overflow-y: auto; }
+        .compose-container { padding: 30px; max-width: 1000px; overflow-y: auto; }
         
         .message-view {
             padding: 30px;
@@ -260,31 +267,100 @@ unset($_SESSION['success']);
             line-height: 1.6;
         }
         
-        .form-group { margin-bottom: 20px; }
-        .form-group label { display: block; margin-bottom: 8px; font-weight: 600; font-size: 14px; }
-        .form-group input, .form-group select, .form-group textarea {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e5e7eb;
-            border-radius: 8px;
-            font-size: 14px;
+        .reply-container {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f0f9ff;
+            border-radius: 10px;
+            border-left: 4px solid #3b82f6;
         }
-        .form-group textarea { min-height: 200px; resize: vertical; }
         
-        .btn {
-            padding: 10px 20px;
+        .reply-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .reply-toggle {
+            background: #3b82f6;
+            color: white;
             border: none;
+            padding: 10px 20px;
             border-radius: 6px;
             cursor: pointer;
             font-weight: 600;
             transition: all 0.3s;
         }
+        
+        .reply-toggle:hover {
+            background: #2563eb;
+            transform: translateY(-2px);
+        }
+        
+        .reply-form {
+            display: none;
+        }
+        
+        .reply-form.active {
+            display: block;
+        }
+        
+        .thread-item {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            border-left: 3px solid #e5e7eb;
+        }
+        
+        .thread-item.own {
+            border-left-color: #3b82f6;
+            background: #f0f9ff;
+        }
+        
+        .thread-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; font-weight: 600; font-size: 14px; }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        .form-group textarea { min-height: 150px; resize: vertical; }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 15px;
+            transition: all 0.3s;
+        }
         .btn-primary {
-            background: linear-gradient(135deg, #1e3a8a, #312e81);
+            background: linear-gradient(135deg, #3b82f6, #1e40af);
             color: white;
         }
-        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(30,58,138,0.4); }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(59,130,246,0.4); }
         .btn-secondary { background: #e5e7eb; color: #374151; }
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        .btn-danger:hover {
+            background: #dc2626;
+        }
         .btn-sm { padding: 8px 16px; font-size: 13px; }
         
         .alert {
@@ -297,18 +373,87 @@ unset($_SESSION['success']);
         
         .empty-state { text-align: center; padding: 80px 20px; color: #9ca3af; }
         .empty-icon { font-size: 64px; margin-bottom: 20px; opacity: 0.5; }
+        
+        .delete-confirm {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        
+        .delete-confirm.active {
+            display: flex;
+        }
+        
+        .delete-modal {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 400px;
+            text-align: center;
+        }
+        
+        .delete-modal h3 {
+            margin-bottom: 15px;
+            color: #ef4444;
+        }
+        
+        .delete-modal p {
+            margin-bottom: 20px;
+            color: #6b7280;
+        }
+        
+        .delete-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
     </style>
+    <script>
+        function toggleReply() {
+            const form = document.getElementById('reply-form');
+            form.classList.toggle('active');
+            if (form.classList.contains('active')) {
+                document.getElementById('reply-message').focus();
+            }
+        }
+        
+        let deleteMessageId = null;
+        
+        function confirmDelete(msgId) {
+            deleteMessageId = msgId;
+            document.getElementById('delete-confirm').classList.add('active');
+        }
+        
+        function cancelDelete() {
+            deleteMessageId = null;
+            document.getElementById('delete-confirm').classList.remove('active');
+        }
+        
+        function executeDelete() {
+            if (deleteMessageId) {
+                document.getElementById('delete-form-id').value = deleteMessageId;
+                document.getElementById('delete-form').submit();
+            }
+        }
+    </script>
 </head>
 <body>
     <div class="messages-container">
         <aside class="sidebar">
             <div class="sidebar-header">
-                <h2>💬 Messages</h2>
+                <h2>🎓 Student Messages</h2>
                 <div class="user-info">Student: <?php echo htmlspecialchars($student_name); ?></div>
             </div>
             
             <button class="compose-btn" onclick="window.location.href='?tab=compose'">
-                <i class="fas fa-pen"></i> Compose Message
+                <i class="fas fa-pen"></i> New Message
             </button>
             
             <ul class="nav-menu">
@@ -317,7 +462,7 @@ unset($_SESSION['success']);
                     <?php if ($unread_count > 0): ?><span class="nav-badge"><?php echo $unread_count; ?></span><?php endif; ?>
                 </a></li>
                 <li><a href="?tab=sent" class="nav-link <?php echo $active_tab == 'sent' ? 'active' : ''; ?>">
-                    <i class="fas fa-paper-plane"></i> Sent
+                    <i class="fas fa-paper-plane"></i> Sent Messages
                 </a></li>
                 <li><a href="?tab=starred" class="nav-link <?php echo $active_tab == 'starred' ? 'active' : ''; ?>">
                     <i class="fas fa-star"></i> Starred
@@ -334,48 +479,58 @@ unset($_SESSION['success']);
             <div class="message-view-container">
                 <div class="compose-container">
                     <?php if ($success): ?>
-                        <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo $success; ?></div>
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle"></i> <?php echo $success; ?>
+                        </div>
                     <?php endif; ?>
                     
-                    <h2 style="margin-bottom: 25px;">✏️ Compose Message</h2>
+                    <h2 style="margin-bottom: 25px; font-size: 24px;">
+                        <i class="fas fa-pen"></i> Compose New Message
+                    </h2>
                     
                     <form method="POST">
                         <div class="form-group">
-                            <label>To *</label>
+                            <label>To (Admin or Instructor) *</label>
                             <select name="receiver_id" required>
                                 <option value="">-- Select Recipient --</option>
-                                <?php if ($instructors->num_rows > 0): ?>
-                                    <optgroup label="👨‍🏫 My Instructors">
-                                        <?php while ($instructor = $instructors->fetch_assoc()): ?>
-                                            <option value="<?php echo $instructor['id']; ?>">
-                                                <?php echo htmlspecialchars($instructor['full_name']); ?> 
-                                                (<?php echo htmlspecialchars($instructor['course_name']); ?>)
-                                            </option>
-                                        <?php endwhile; ?>
-                                    </optgroup>
-                                <?php endif; ?>
-                                <?php if ($admins->num_rows > 0): ?>
-                                    <optgroup label="🔴 Administrators">
-                                        <?php while ($admin = $admins->fetch_assoc()): ?>
-                                            <option value="<?php echo $admin['id']; ?>">
-                                                <?php echo htmlspecialchars($admin['full_name']); ?> (Admin)
-                                            </option>
-                                        <?php endwhile; ?>
-                                    </optgroup>
-                                <?php endif; ?>
+                                <optgroup label="🔴 Admin">
+                                    <?php 
+                                    $recipients->data_seek(0);
+                                    while ($user = $recipients->fetch_assoc()): 
+                                        if ($user['role'] == 'admin'):
+                                    ?>
+                                        <option value="<?php echo $user['id']; ?>">
+                                            <?php echo htmlspecialchars($user['full_name']); ?>
+                                        </option>
+                                    <?php 
+                                        endif;
+                                    endwhile; 
+                                    ?>
+                                </optgroup>
+                                <optgroup label="👨‍🏫 Instructors">
+                                    <?php 
+                                    $recipients->data_seek(0);
+                                    while ($user = $recipients->fetch_assoc()): 
+                                        if ($user['role'] == 'instructor'):
+                                    ?>
+                                        <option value="<?php echo $user['id']; ?>">
+                                            <?php echo htmlspecialchars($user['full_name']); ?>
+                                        </option>
+                                    <?php 
+                                        endif;
+                                    endwhile; 
+                                    ?>
+                                </optgroup>
                             </select>
                         </div>
-                        
                         <div class="form-group">
                             <label>Subject *</label>
                             <input type="text" name="subject" required placeholder="Enter subject">
                         </div>
-                        
                         <div class="form-group">
                             <label>Message *</label>
-                            <textarea name="message" required placeholder="Type your message here..."></textarea>
+                            <textarea name="message" required placeholder="Type your message..."></textarea>
                         </div>
-                        
                         <button type="submit" name="send_message" class="btn btn-primary">
                             <i class="fas fa-paper-plane"></i> Send Message
                         </button>
@@ -393,7 +548,7 @@ unset($_SESSION['success']);
                     mysqli_data_seek($messages, 0);
                     while ($msg = $messages->fetch_assoc()): 
                     ?>
-                        <div class="message-item <?php echo (!$msg['is_read'] && $active_tab == 'inbox') ? 'unread' : ''; ?>"
+                        <div class="message-item <?php echo (!$msg['is_read'] && $active_tab == 'inbox') ? 'unread' : ''; ?> <?php echo ($msg['id'] == $view_msg_id) ? 'active' : ''; ?>"
                              onclick="window.location.href='?tab=<?php echo $active_tab; ?>&view=<?php echo $msg['id']; ?>'">
                             <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
                                 <div class="message-sender">
@@ -429,6 +584,9 @@ unset($_SESSION['success']);
                             <i class="fas fa-envelope"></i> Mark as <?php echo $viewed_message['is_read'] ? 'Unread' : 'Read'; ?>
                         </a>
                         <?php endif; ?>
+                        <button onclick="confirmDelete(<?php echo $viewed_message['id']; ?>)" class="btn btn-danger btn-sm">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
                     </div>
                     
                     <div class="message-header-view">
@@ -448,14 +606,54 @@ unset($_SESSION['success']);
                         <?php echo nl2br(htmlspecialchars($viewed_message['message'])); ?>
                     </div>
                     
+                    <!-- Quick Reply -->
+                    <div class="reply-container">
+                        <div class="reply-header">
+                            <h3 style="font-size: 16px; color: #1e40af;">
+                                <i class="fas fa-reply"></i> Quick Reply
+                            </h3>
+                            <button onclick="toggleReply()" class="reply-toggle">
+                                <i class="fas fa-pen"></i> Write Reply
+                            </button>
+                        </div>
+                        
+                        <form method="POST" id="reply-form" class="reply-form">
+                            <input type="hidden" name="receiver_id" value="<?php echo $viewed_message['sender_id']; ?>">
+                            <input type="hidden" name="parent_id" value="<?php echo $viewed_message['id']; ?>">
+                            <input type="hidden" name="original_subject" value="<?php echo htmlspecialchars($viewed_message['subject']); ?>">
+                            <input type="hidden" name="subject" value="Re: <?php echo htmlspecialchars($viewed_message['subject']); ?>">
+                            
+                            <div class="form-group">
+                                <label>Your Reply *</label>
+                                <textarea name="message" id="reply-message" required placeholder="Type your reply here..." style="min-height: 120px;"></textarea>
+                            </div>
+                            
+                            <div style="display: flex; gap: 10px;">
+                                <button type="submit" name="send_message" class="btn btn-primary">
+                                    <i class="fas fa-paper-plane"></i> Send Reply
+                                </button>
+                                <button type="button" onclick="toggleReply()" class="btn btn-secondary">
+                                    Cancel
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                    
                     <?php if (count($message_thread) > 0): ?>
-                        <h3 style="margin: 30px 0 15px;">Replies (<?php echo count($message_thread); ?>)</h3>
+                        <h3 style="margin: 30px 0 15px; font-size: 18px; color: #374151;">
+                            <i class="fas fa-comments"></i> Conversation (<?php echo count($message_thread); ?>)
+                        </h3>
                         <?php foreach ($message_thread as $reply): ?>
-                            <div class="message-body" style="margin-bottom: 15px; background: #f9fafb;">
-                                <div style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb;">
-                                    <strong><?php echo htmlspecialchars($reply['sender_name']); ?></strong>
+                            <div class="thread-item <?php echo $reply['sender_id'] == $student_id ? 'own' : ''; ?>">
+                                <div class="thread-header">
+                                    <div>
+                                        <strong><?php echo htmlspecialchars($reply['sender_name']); ?></strong>
+                                        <span style="color: #6b7280; font-size: 13px; margin-left: 8px;">
+                                            (<?php echo ucfirst($reply['sender_role']); ?>)
+                                        </span>
+                                    </div>
                                     <span style="color: #6b7280; font-size: 13px;">
-                                        - <?php echo date('d M Y, H:i', strtotime($reply['created_at'])); ?>
+                                        <?php echo date('d M Y, H:i', strtotime($reply['created_at'])); ?>
                                     </span>
                                 </div>
                                 <?php echo nl2br(htmlspecialchars($reply['message'])); ?>
@@ -482,10 +680,8 @@ unset($_SESSION['success']);
                                     <?php 
                                     if ($active_tab == 'inbox') {
                                         echo htmlspecialchars($msg['sender_name']);
-                                        echo ' <span style="font-size: 12px; color: #6b7280; font-weight: 400;">(' . ucfirst($msg['sender_role']) . ')</span>';
                                     } elseif ($active_tab == 'sent') {
                                         echo 'To: ' . htmlspecialchars($msg['receiver_name']);
-                                        echo ' <span style="font-size: 12px; color: #6b7280; font-weight: 400;">(' . ucfirst($msg['receiver_role']) . ')</span>';
                                     } else {
                                         echo htmlspecialchars($msg['other_name']);
                                     }
@@ -494,10 +690,6 @@ unset($_SESSION['success']);
                                 <div class="message-time"><?php echo date('d M, H:i', strtotime($msg['created_at'])); ?></div>
                             </div>
                             <div class="message-subject"><?php echo htmlspecialchars($msg['subject']); ?></div>
-                            <div class="message-preview">
-                                <?php echo htmlspecialchars(substr($msg['message'], 0, 100)); ?>
-                                <?php echo strlen($msg['message']) > 100 ? '...' : ''; ?>
-                            </div>
                         </div>
                     <?php 
                         endwhile;
@@ -505,7 +697,7 @@ unset($_SESSION['success']);
                     ?>
                         <div class="empty-state">
                             <div class="empty-icon">📭</div>
-                            <p>No messages found</p>
+                            <p>No messages</p>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -519,5 +711,25 @@ unset($_SESSION['success']);
             </div>
         <?php endif; ?>
     </div>
+    
+    <!-- Delete Confirmation Modal -->
+    <div id="delete-confirm" class="delete-confirm">
+        <div class="delete-modal">
+            <h3><i class="fas fa-exclamation-triangle"></i> Delete Message?</h3>
+            <p>Are you sure you want to delete this message and all its replies? This action cannot be undone.</p>
+            <div class="delete-actions">
+                <button onclick="cancelDelete()" class="btn btn-secondary">Cancel</button>
+                <button onclick="executeDelete()" class="btn btn-danger">
+                    <i class="fas fa-trash"></i> Delete
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Hidden delete form -->
+    <form id="delete-form" method="POST" style="display: none;">
+        <input type="hidden" name="msg_id" id="delete-form-id">
+        <input type="hidden" name="delete_message" value="1">
+    </form>
 </body>
 </html>
