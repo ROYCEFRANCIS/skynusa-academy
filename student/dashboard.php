@@ -555,20 +555,36 @@ function formatDate($date) {
                     <div class="courses-grid">
                         <?php foreach ($my_courses as $course): ?>
                             <div class="course-card">
-                                <div class="course-header">
-                                    <div>
-                                        <h3><?php echo htmlspecialchars($course['course_name']); ?></h3>
-                                        <p class="instructor">👨‍🏫 <?php echo htmlspecialchars($course['instructor_name']); ?></p>
-                                    </div>
+                                <div class="course-card-header">
                                     <span class="course-category"><?php echo htmlspecialchars($course['category']); ?></span>
+                                    <h3><?php echo htmlspecialchars($course['course_name']); ?></h3>
+                                    <p class="instructor">👨‍🏫 <?php echo htmlspecialchars($course['instructor_name']); ?></p>
                                 </div>
                                 
-                                <div class="progress-bar">
-                                    <div class="progress-fill" style="width: <?php echo $course['progress']; ?>%"></div>
+                                <div class="course-card-body">
+                                    <div class="progress-section">
+                                        <div class="progress-label">
+                                            <span>Progress</span>
+                                            <span><?php echo number_format($course['progress'], 0); ?>%</span>
+                                        </div>
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: <?php echo $course['progress']; ?>%"></div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="course-meta">
+                                        <div class="course-meta-item">
+                                            <span>📄</span>
+                                            <span>3 Materials</span>
+                                        </div>
+                                        <div class="course-meta-item">
+                                            <span>📝</span>
+                                            <span>4 Assignments</span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <p class="progress-text"><?php echo number_format($course['progress'], 0); ?>% Complete</p>
                                 
-                                <div class="course-footer">
+                                <div class="course-card-footer">
                                     <span class="badge <?php echo $course['enrollment_status'] == 'completed' ? 'badge-completed' : 'badge-success'; ?>">
                                         <?php echo ucfirst($course['enrollment_status']); ?>
                                     </span>

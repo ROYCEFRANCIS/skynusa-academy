@@ -3,6 +3,10 @@
 $current_page = basename($_SERVER['PHP_SELF'], '.php');
 $student_name = $_SESSION['full_name'] ?? 'Student';
 ?>
+
+<!-- Font Awesome CDN -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
 <aside class="sidebar">
     <div class="sidebar-header">
         <div class="logo">
@@ -108,6 +112,19 @@ $student_name = $_SESSION['full_name'] ?? 'Student';
     overflow-y: auto;
     z-index: 1000;
     box-shadow: 4px 0 20px rgba(0,0,0,0.1);
+}
+
+.sidebar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
 }
 
 .sidebar-header {
@@ -217,6 +234,13 @@ $student_name = $_SESSION['full_name'] ?? 'Student';
     border-radius: 10px;
     min-width: 20px;
     text-align: center;
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
 }
 
 .nav-footer {
@@ -257,4 +281,3 @@ $student_name = $_SESSION['full_name'] ?? 'Student';
     }
 }
 </style>
-<link rel="stylesheet" href="../assets/css/modern-theme.css">

@@ -3,6 +3,10 @@
 $current_page = basename($_SERVER['PHP_SELF'], '.php');
 $instructor_name = $_SESSION['full_name'] ?? 'Instructor';
 ?>
+
+<!-- Font Awesome CDN -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
 <aside class="sidebar">
     <div class="sidebar-header">
         <div class="logo">
@@ -81,6 +85,19 @@ $instructor_name = $_SESSION['full_name'] ?? 'Instructor';
     overflow-y: auto;
     z-index: 1000;
     box-shadow: 4px 0 20px rgba(0,0,0,0.1);
+}
+
+.sidebar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
 }
 
 .sidebar-header {
@@ -218,4 +235,3 @@ $instructor_name = $_SESSION['full_name'] ?? 'Instructor';
     }
 }
 </style>
-<link rel="stylesheet" href="../assets/css/modern-theme.css">
