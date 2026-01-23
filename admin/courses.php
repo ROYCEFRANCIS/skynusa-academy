@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     
     if ($id > 0) {
         $stmt = $conn->prepare("UPDATE courses SET course_code=?, course_name=?, description=?, instructor_id=?, category=?, duration=?, quota=?, start_date=?, end_date=?, status=? WHERE id=?");
-        $stmt->bind_param("sssississi", $course_code, $course_name, $description, $instructor_id, $category, $duration, $quota, $start_date, $end_date, $status, $id);
+        $stmt->bind_param("sssississsi", $course_code, $course_name, $description, $instructor_id, $category, $duration, $quota, $start_date, $end_date, $status, $id);
         if ($stmt->execute()) {
             $success = 'Course updated successfully!';
         } else {
@@ -356,7 +356,7 @@ if (isset($_GET['edit'])) {
                 </select>
                 
                 <?php if ($search || $category_filter || $status_filter): ?>
-                    <a href="courses_improved.php" class="btn btn-secondary">
+                    <a href="courses.php" class="btn btn-secondary">
                         <i class="fas fa-times"></i> Clear
                     </a>
                 <?php endif; ?>
@@ -444,7 +444,7 @@ if (isset($_GET['edit'])) {
                         <i class="fas fa-save"></i> <?php echo $edit_course ? 'Update' : 'Add'; ?> Course
                     </button>
                     <?php if ($edit_course): ?>
-                        <a href="courses_improved.php" class="btn btn-secondary">
+                        <a href="courses.php" class="btn btn-secondary">
                             <i class="fas fa-times"></i> Cancel
                         </a>
                     <?php endif; ?>

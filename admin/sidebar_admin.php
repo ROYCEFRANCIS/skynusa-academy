@@ -47,6 +47,24 @@ $admin_name = $_SESSION['full_name'] ?? 'Admin';
                 <span>Instructors</span>
             </a>
         </div>
+                <div class="nav-section">
+            <div class="nav-section-title">Communication</div>
+            <a href="messages.php" class="nav-item <?php echo $current_page == 'messages' ? 'active' : ''; ?>">
+                <i class="fas fa-comment-alt"></i>
+                <span>Messages</span>
+                <?php
+                // Check for unread messages
+                if (isset($_SESSION['user_id'])) {
+                    $student_id = $_SESSION['user_id'];
+                    $unread_query = $conn->query("SELECT COUNT(*) as count FROM messages WHERE receiver_id = '$student_id' AND is_read = 0");
+                    $unread_data = $unread_query->fetch_assoc();
+                    if ($unread_data['count'] > 0) {
+                        echo '<span class="badge-notification">' . $unread_data['count'] . '</span>';
+                    }
+                }
+                ?>
+            </a>
+        </div>
         
         <div class="nav-section">
             <div class="nav-section-title">Settings</div>

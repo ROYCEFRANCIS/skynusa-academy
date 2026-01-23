@@ -74,11 +74,14 @@ if (isset($_GET['action'])) {
         case 'read':
             $conn->query("UPDATE messages SET is_read = 1, read_at = NOW() WHERE id = $msg_id");
             break;
+        case 'unread':
+            $conn->query("UPDATE messages SET is_read = 0, read_at = NULL WHERE id = $msg_id");
+            break;
         case 'star':
             $conn->query("UPDATE messages SET is_starred = NOT is_starred WHERE id = $msg_id");
             break;
-        case 'delete':
-            $conn->query("DELETE FROM messages WHERE id = $msg_id");
+        case 'archive':
+            $conn->query("UPDATE messages SET is_archived = 1 WHERE id = $msg_id");
             header("Location: messages.php?tab=" . ($_GET['tab'] ?? 'inbox'));
             exit();
     }
@@ -109,6 +112,20 @@ $sent = $conn->query("
     LIMIT 100
 ");
 
+// Get starred
+$starred = $conn->query("
+    SELECT m.*, 
+           IF(m.sender_id = '$admin_id', u2.full_name, u1.full_name) as other_name,
+           IF(m.sender_id = '$admin_id', 'sent', 'received') as direction,
+           u1.role as sender_role
+    FROM messages m
+    LEFT JOIN users u1 ON m.sender_id = u1.id
+    LEFT JOIN users u2 ON m.receiver_id = u2.id
+    WHERE (m.receiver_id = '$admin_id' OR m.sender_id = '$admin_id') 
+    AND m.is_starred = 1
+    ORDER BY m.created_at DESC
+");
+
 // Get all users for individual messaging
 $all_users = $conn->query("
     SELECT id, full_name, role, email 
@@ -123,6 +140,41 @@ $stats = [
     'today_messages' => $conn->query("SELECT COUNT(*) as count FROM messages WHERE DATE(created_at) = CURDATE()")->fetch_assoc()['count'],
     'unread_system' => $conn->query("SELECT COUNT(*) as count FROM messages WHERE is_read = 0")->fetch_assoc()['count']
 ];
+
+// Get viewed message with thread
+$viewed_message = null;
+$message_thread = [];
+if ($view_msg_id > 0) {
+    $stmt = $conn->prepare("
+        SELECT m.*, u.full_name as sender_name, u.role as sender_role,
+               u2.full_name as receiver_name
+        FROM messages m
+        JOIN users u ON m.sender_id = u.id
+        JOIN users u2 ON m.receiver_id = u2.id
+        WHERE m.id = ? AND (m.receiver_id = ? OR m.sender_id = ?)
+    ");
+    $stmt->bind_param("iii", $view_msg_id, $admin_id, $admin_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $viewed_message = $result->fetch_assoc();
+    
+    if ($viewed_message) {
+        if ($viewed_message['receiver_id'] == $admin_id && !$viewed_message['is_read']) {
+            $conn->query("UPDATE messages SET is_read = 1, read_at = NOW() WHERE id = $view_msg_id");
+        }
+        
+        $thread_query = $conn->query("
+            SELECT m.*, u.full_name as sender_name, u.role as sender_role
+            FROM messages m
+            JOIN users u ON m.sender_id = u.id
+            WHERE m.parent_id = $view_msg_id
+            ORDER BY m.created_at ASC
+        ");
+        while ($row = $thread_query->fetch_assoc()) {
+            $message_thread[] = $row;
+        }
+    }
+}
 
 $success = $_SESSION['success'] ?? '';
 unset($_SESSION['success']);
@@ -235,7 +287,33 @@ unset($_SESSION['success']);
         .message-subject { font-size: 13px; color: #374151; margin: 6px 0; }
         
         .message-view-container { flex: 1; display: flex; flex-direction: column; }
-        .compose-container { padding: 30px; max-width: 1000px; }
+        .compose-container { padding: 30px; max-width: 1000px; overflow-y: auto; }
+        
+        .message-view {
+            padding: 30px;
+            overflow-y: auto;
+        }
+        
+        .message-header-view {
+            background: #f9fafb;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .message-actions {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .message-body {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            border: 1px solid #e5e7eb;
+            line-height: 1.6;
+        }
         
         .broadcast-mega {
             background: linear-gradient(135deg, #fef3c7, #fde68a);
@@ -277,13 +355,6 @@ unset($_SESSION['success']);
             border-color: #f59e0b;
             transform: translateY(-3px);
             box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }
-        .broadcast-option input[type="radio"] {
-            display: none;
-        }
-        .broadcast-option input[type="radio"]:checked + label {
-            color: #f59e0b;
-            font-weight: 700;
         }
         .broadcast-option.selected {
             border-color: #f59e0b;
@@ -330,6 +401,7 @@ unset($_SESSION['success']);
         }
         .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(220,38,38,0.4); }
         .btn-secondary { background: #e5e7eb; color: #374151; }
+        .btn-sm { padding: 8px 16px; font-size: 13px; }
         
         .alert {
             padding: 15px 20px;
@@ -397,6 +469,9 @@ unset($_SESSION['success']);
                 </a></li>
                 <li><a href="?tab=sent" class="nav-link <?php echo $active_tab == 'sent' ? 'active' : ''; ?>">
                     <i class="fas fa-paper-plane"></i> Sent Broadcasts
+                </a></li>
+                <li><a href="?tab=starred" class="nav-link <?php echo $active_tab == 'starred' ? 'active' : ''; ?>">
+                    <i class="fas fa-star"></i> Starred
                 </a></li>
                 <li style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
                     <a href="dashboard.php" class="nav-link">
@@ -517,24 +592,111 @@ unset($_SESSION['success']);
                     </div>
                 </div>
             </div>
-        <?php else: ?>
+        <?php elseif ($view_msg_id > 0 && $viewed_message): ?>
             <div class="message-list-container">
                 <div class="list-header">
-                    <h3><?php echo $active_tab == 'inbox' ? '📥 Inbox' : '📤 Sent'; ?></h3>
+                    <h3><?php echo $active_tab == 'inbox' ? '📥 Inbox' : ($active_tab == 'sent' ? '📤 Sent' : '⭐ Starred'); ?></h3>
                 </div>
                 <div class="messages-list">
                     <?php 
-                    $messages = $active_tab == 'inbox' ? $inbox : $sent;
-                    if ($messages->num_rows > 0): 
-                        while ($msg = $messages->fetch_assoc()): 
+                    $messages = $active_tab == 'inbox' ? $inbox : ($active_tab == 'sent' ? $sent : $starred);
+                    mysqli_data_seek($messages, 0);
+                    while ($msg = $messages->fetch_assoc()): 
                     ?>
-                        <div class="message-item <?php echo (!$msg['is_read'] && $active_tab == 'inbox') ? 'unread' : ''; ?>">
+                        <div class="message-item <?php echo (!$msg['is_read'] && $active_tab == 'inbox') ? 'unread' : ''; ?><?php echo ($msg['id'] == $view_msg_id) ? ' active' : ''; ?>"
+                             onclick="window.location.href='?tab=<?php echo $active_tab; ?>&view=<?php echo $msg['id']; ?>'">
                             <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
                                 <div class="message-sender">
                                     <?php 
-                                    echo $active_tab == 'inbox' 
-                                        ? htmlspecialchars($msg['sender_name']) 
-                                        : 'To: ' . htmlspecialchars($msg['receiver_name']);
+                                    if ($active_tab == 'inbox') {
+                                        echo htmlspecialchars($msg['sender_name']);
+                                    } elseif ($active_tab == 'sent') {
+                                        echo 'To: ' . htmlspecialchars($msg['receiver_name']);
+                                    } else {
+                                        echo htmlspecialchars($msg['other_name']);
+                                    }
+                                    ?>
+                                </div>
+                                <div class="message-time"><?php echo date('d M, H:i', strtotime($msg['created_at'])); ?></div>
+                            </div>
+                            <div class="message-subject"><?php echo htmlspecialchars($msg['subject']); ?></div>
+                        </div>
+                    <?php endwhile; ?>
+                </div>
+            </div>
+            
+            <div class="message-view-container">
+                <div class="message-view">
+                    <div class="message-actions">
+                        <a href="?tab=<?php echo $active_tab; ?>" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-arrow-left"></i> Back
+                        </a>
+                        <a href="?tab=<?php echo $active_tab; ?>&action=star&msg_id=<?php echo $viewed_message['id']; ?>" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-star"></i> <?php echo $viewed_message['is_starred'] ? 'Unstar' : 'Star'; ?>
+                        </a>
+                        <?php if ($viewed_message['receiver_id'] == $admin_id): ?>
+                        <a href="?tab=<?php echo $active_tab; ?>&action=<?php echo $viewed_message['is_read'] ? 'unread' : 'read'; ?>&msg_id=<?php echo $viewed_message['id']; ?>" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-envelope"></i> Mark as <?php echo $viewed_message['is_read'] ? 'Unread' : 'Read'; ?>
+                        </a>
+                        <?php endif; ?>
+                    </div>
+                    
+                    <div class="message-header-view">
+                        <h2 style="margin-bottom: 15px;"><?php echo htmlspecialchars($viewed_message['subject']); ?></h2>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <strong>From:</strong> <?php echo htmlspecialchars($viewed_message['sender_name']); ?> (<?php echo ucfirst($viewed_message['sender_role']); ?>)<br>
+                                <strong>To:</strong> <?php echo htmlspecialchars($viewed_message['receiver_name']); ?>
+                            </div>
+                            <div style="text-align: right; color: #6b7280;">
+                                <?php echo date('d M Y, H:i', strtotime($viewed_message['created_at'])); ?>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="message-body">
+                        <?php echo nl2br(htmlspecialchars($viewed_message['message'])); ?>
+                    </div>
+                    
+                    <?php if (count($message_thread) > 0): ?>
+                        <h3 style="margin: 30px 0 15px;">Replies (<?php echo count($message_thread); ?>)</h3>
+                        <?php foreach ($message_thread as $reply): ?>
+                            <div class="message-body" style="margin-bottom: 15px; background: #f9fafb;">
+                                <div style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb;">
+                                    <strong><?php echo htmlspecialchars($reply['sender_name']); ?></strong>
+                                    <span style="color: #6b7280; font-size: 13px;">
+                                        - <?php echo date('d M Y, H:i', strtotime($reply['created_at'])); ?>
+                                    </span>
+                                </div>
+                                <?php echo nl2br(htmlspecialchars($reply['message'])); ?>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php else: ?>
+            <div class="message-list-container">
+                <div class="list-header">
+                    <h3><?php echo $active_tab == 'inbox' ? '📥 Inbox' : ($active_tab == 'sent' ? '📤 Sent' : '⭐ Starred'); ?></h3>
+                </div>
+                <div class="messages-list">
+                    <?php 
+                    $messages = $active_tab == 'inbox' ? $inbox : ($active_tab == 'sent' ? $sent : $starred);
+                    if ($messages->num_rows > 0): 
+                        while ($msg = $messages->fetch_assoc()): 
+                    ?>
+                        <div class="message-item <?php echo (!$msg['is_read'] && $active_tab == 'inbox') ? 'unread' : ''; ?>"
+                             onclick="window.location.href='?tab=<?php echo $active_tab; ?>&view=<?php echo $msg['id']; ?>'">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                                <div class="message-sender">
+                                    <?php 
+                                    if ($active_tab == 'inbox') {
+                                        echo htmlspecialchars($msg['sender_name']);
+                                    } elseif ($active_tab == 'sent') {
+                                        echo 'To: ' . htmlspecialchars($msg['receiver_name']);
+                                    } else {
+                                        echo htmlspecialchars($msg['other_name']);
+                                    }
                                     ?>
                                 </div>
                                 <div class="message-time"><?php echo date('d M, H:i', strtotime($msg['created_at'])); ?></div>
