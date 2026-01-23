@@ -314,19 +314,12 @@ $active_courses = fetch_all(query("
         }
     </style>
 </head>
-
-            <script src="../assets/js/utils.js"></script>
-                <script src="../assets/js/enhanced-ui.js"></script>
-                <script src="../assets/js/script.js"></script>
-            </body>
-            </html>
-
 <body>
-<?php include 'sidebar_admin.php'; ?>
+    <?php include 'sidebar_admin.php'; ?>
     
     <div class="main-content">
         <div class="header">
-            <h1>👋 Welcome, <?php echo $admin_name; ?></h1>
+            <h1>👋 Welcome, <?php echo htmlspecialchars($admin_name); ?></h1>
             <div class="user-info">
                 <span>Admin Panel</span>
                 <a href="../logout.php" class="btn btn-secondary">Logout</a>
@@ -426,6 +419,9 @@ $active_courses = fetch_all(query("
             <?php endif; ?>
         </div>
     </div>
+
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/enhanced-ui.js"></script>
+    <script src="../assets/js/script.js"></script>
 </body>
 </html>
-
