@@ -495,31 +495,7 @@ function formatDate($date) {
 <body>
     <div class="dashboard">
         <!-- Sidebar -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <h2>🎓 Skynusa Academy</h2>
-                <p>Student Portal</p>
-            </div>
-
-            <div class="user-profile">
-                <div class="avatar"><?php echo strtoupper(substr($student_name, 0, 1)); ?></div>
-                <h3><?php echo $student_name; ?></h3>
-                <p>Student</p>
-            </div>
-
-            <ul class="sidebar-menu">
-                <li><a href="dashboard.php" class="active"><span>📊</span> <span>Dashboard</span></a></li>
-                <li><a href="my_courses.php"><span>📚</span> <span>My Courses</span></a></li>
-                <li><a href="schedule.php"><span>📅</span> <span>Schedule</span></a></li>
-                <li><a href="assignments.php"><span>📝</span> <span>Assignments</span></a></li>
-                <li><a href="grades.php"><span>⭐</span> <span>Grades</span></a></li>
-                <li><a href="materials.php"><span>📄</span> <span>Materials</span></a></li>
-                <li><a href="certificates.php"><span>🏆</span> <span>Certificates</span></a></li>
-                <li><a href="messages.php"><span>💬</span> <span>Messages</span></a></li>
-                <li><a href="profile.php"><span>👤</span> <span>Profile</span></a></li>
-                <li><a href="../logout.php"><span>🚪</span> <span>Logout</span></a></li>
-            </ul>
-        </aside>
+<?php include 'sidebar_student.php'; ?>
 
         <!-- Main Content -->
         <main class="main-content">

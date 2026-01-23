@@ -42,8 +42,12 @@ $active_courses = fetch_all(query("
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard - Skynusa Academy</title>
+    <link rel="stylesheet" href="../assets/css/global.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/enhanced-style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        /* Dashboard specific styles */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
             font-family: 'Inter', 'Segoe UI', sans-serif; 
@@ -312,40 +316,15 @@ $active_courses = fetch_all(query("
         }
     </style>
 </head>
+
+            <script src="../assets/js/utils.js"></script>
+                <script src="../assets/js/enhanced-ui.js"></script>
+                <script src="../assets/js/script.js"></script>
+            </body>
+            </html>
+
 <body>
-    <div class="sidebar">
-        <div class="logo">
-            <h2>🎓 SKYNUSA</h2>
-            <p>Academy Admin</p>
-        </div>
-        
-        <nav class="nav-menu">
-            <a href="dashboard.php" class="nav-item active">
-                <i class="fas fa-home"></i>
-                <span>Dashboard</span>
-            </a>
-            <a href="courses.php" class="nav-item">
-                <i class="fas fa-book"></i>
-                <span>Courses</span>
-            </a>
-            <a href="students.php" class="nav-item">
-                <i class="fas fa-user-graduate"></i>
-                <span>Students</span>
-            </a>
-            <a href="instructors.php" class="nav-item">
-                <i class="fas fa-chalkboard-teacher"></i>
-                <span>Instructors</span>
-            </a>
-            <a href="enrollments.php" class="nav-item">
-                <i class="fas fa-clipboard-list"></i>
-                <span>Enrollments</span>
-            </a>
-            <a href="../logout.php" class="nav-item" style="margin-top: 30px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
-                <i class="fas fa-sign-out-alt"></i>
-                <span>Logout</span>
-            </a>
-        </nav>
-    </div>
+<?php include 'sidebar_admin.php'; ?>
     
     <div class="main-content">
         <div class="header">
@@ -450,4 +429,5 @@ $active_courses = fetch_all(query("
         </div>
     </div>
 </body>
-</html><link rel="stylesheet" href="../assets/css/enhanced-style.css">
+</html>
+

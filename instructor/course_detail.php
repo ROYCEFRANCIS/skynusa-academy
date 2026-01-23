@@ -185,26 +185,7 @@ $schedules = fetch_all(query("
 </head>
 <body>
     <div class="dashboard">
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <h2>🎓 Skynusa Academy</h2>
-                <p>Instruktur Panel</p>
-            </div>
-            <div class="instructor-profile">
-                <div class="avatar"><?php echo strtoupper(substr($instructor_name, 0, 1)); ?></div>
-                <h3><?php echo $instructor_name; ?></h3>
-                <p>Instructor</p>
-            </div>
-            <ul class="sidebar-menu">
-                <li><a href="dashboard.php"><span>📊</span> <span>Dashboard</span></a></li>
-                <li><a href="my_courses.php" class="active"><span>📚</span> <span>Kursus Saya</span></a></li>
-                <li><a href="schedules.php"><span>📅</span> <span>Jadwal</span></a></li>
-                <li><a href="materials.php"><span>📄</span> <span>Materi</span></a></li>
-                <li><a href="students.php"><span>👥</span> <span>Peserta</span></a></li>
-                <li><a href="evaluations.php"><span>⭐</span> <span>Evaluasi</span></a></li>
-                <li><a href="../logout.php"><span>🚪</span> <span>Logout</span></a></li>
-            </ul>
-        </aside>
+<?php include 'sidebar_instructor.php'; ?>
         
         <main class="main-content">
             <div class="header">
