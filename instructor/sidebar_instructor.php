@@ -46,6 +46,10 @@ $instructor_name = $_SESSION['full_name'] ?? 'Instructor';
                 <i class="fas fa-file-alt"></i>
                 <span>Materials</span>
             </a>
+            <a href="assignments.php" class="nav-item <?php echo $current_page == 'assignments' ? 'active' : ''; ?>">
+                <i class="fas fa-tasks"></i>
+                <span>Assignments</span>
+            </a>
             <a href="students.php" class="nav-item <?php echo $current_page == 'students' ? 'active' : ''; ?>">
                 <i class="fas fa-users"></i>
                 <span>Students</span>
@@ -54,9 +58,9 @@ $instructor_name = $_SESSION['full_name'] ?? 'Instructor';
                 <i class="fas fa-star"></i>
                 <span>Evaluations</span>
             </a>
-                        <a href="messages.php" class="nav-item <?php echo $current_page == 'messages' ? 'active' : ''; ?>">
+            <a href="messages.php" class="nav-item <?php echo $current_page == 'messages' ? 'active' : ''; ?>">
                 <i class="fas fa-comment-alt"></i>
-                <span>messages</span>
+                <span>Messages</span>
             </a>
         </div>
         
